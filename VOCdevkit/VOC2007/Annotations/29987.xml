@@ -1,0 +1,27 @@
+<annotation>
+    <folder>train</folder>
+    <filename>29987.jpg</filename>
+    <path>D:\TT100K\data\train\29987.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>pne</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1923</xmin>
+            <ymin>625</ymin>
+            <xmax>1994</xmax>
+            <ymax>717</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

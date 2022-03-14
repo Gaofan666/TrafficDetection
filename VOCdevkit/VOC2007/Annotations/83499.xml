@@ -1,0 +1,27 @@
+<annotation>
+    <folder>test</folder>
+    <filename>83499.jpg</filename>
+    <path>D:\TT100K\data\test\83499.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>p23</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1486</xmin>
+            <ymin>955</ymin>
+            <xmax>1514</xmax>
+            <ymax>981</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

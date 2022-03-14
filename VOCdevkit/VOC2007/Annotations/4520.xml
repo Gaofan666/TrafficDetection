@@ -1,0 +1,27 @@
+<annotation>
+    <folder>train</folder>
+    <filename>4520.jpg</filename>
+    <path>D:\TT100K\data\train\4520.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>w55</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>268</xmin>
+            <ymin>951</ymin>
+            <xmax>310</xmax>
+            <ymax>999</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

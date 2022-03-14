@@ -1,0 +1,39 @@
+<annotation>
+    <folder>train</folder>
+    <filename>62845.jpg</filename>
+    <path>D:\TT100K\data\train\62845.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>pl80</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1382</xmin>
+            <ymin>895</ymin>
+            <xmax>1405</xmax>
+            <ymax>920</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>pn</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1407</xmin>
+            <ymin>895</ymin>
+            <xmax>1431</xmax>
+            <ymax>922</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

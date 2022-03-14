@@ -1,0 +1,39 @@
+<annotation>
+    <folder>train</folder>
+    <filename>63576.jpg</filename>
+    <path>D:\TT100K\data\train\63576.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>p26</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1566</xmin>
+            <ymin>858</ymin>
+            <xmax>1601</xmax>
+            <ymax>898</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>ph4.5</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1647</xmin>
+            <ymin>858</ymin>
+            <xmax>1682</xmax>
+            <ymax>900</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

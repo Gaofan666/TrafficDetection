@@ -1,0 +1,39 @@
+<annotation>
+    <folder>test</folder>
+    <filename>37028.jpg</filename>
+    <path>D:\TT100K\data\test\37028.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>w13</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1322</xmin>
+            <ymin>778</ymin>
+            <xmax>1378</xmax>
+            <ymax>830</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>w57</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1385</xmin>
+            <ymin>783</ymin>
+            <xmax>1440</xmax>
+            <ymax>835</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

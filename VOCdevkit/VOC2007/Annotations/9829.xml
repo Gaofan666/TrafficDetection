@@ -1,0 +1,27 @@
+<annotation>
+    <folder>train</folder>
+    <filename>9829.jpg</filename>
+    <path>D:\TT100K\data\train\9829.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>i4</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>77</xmin>
+            <ymin>832</ymin>
+            <xmax>184</xmax>
+            <ymax>990</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

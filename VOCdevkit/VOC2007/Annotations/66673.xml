@@ -1,0 +1,39 @@
+<annotation>
+    <folder>train</folder>
+    <filename>66673.jpg</filename>
+    <path>D:\TT100K\data\train\66673.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>w13</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1380</xmin>
+            <ymin>908</ymin>
+            <xmax>1406</xmax>
+            <ymax>932</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>w57</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1407</xmin>
+            <ymin>910</ymin>
+            <xmax>1432</xmax>
+            <ymax>934</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

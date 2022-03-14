@@ -1,0 +1,27 @@
+<annotation>
+    <folder>test</folder>
+    <filename>53194.jpg</filename>
+    <path>D:\TT100K\data\test\53194.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>i5</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1899</xmin>
+            <ymin>1010</ymin>
+            <xmax>1944</xmax>
+            <ymax>1086</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

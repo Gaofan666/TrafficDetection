@@ -1,0 +1,39 @@
+<annotation>
+    <folder>train</folder>
+    <filename>9704.jpg</filename>
+    <path>D:\TT100K\data\train\9704.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>pm55</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>131</xmin>
+            <ymin>811</ymin>
+            <xmax>207</xmax>
+            <ymax>900</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>pa14</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>129</xmin>
+            <ymin>906</ymin>
+            <xmax>209</xmax>
+            <ymax>995</ymax>
+        </bndbox>
+    </object>
+
+</annotation>

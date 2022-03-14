@@ -1,0 +1,39 @@
+<annotation>
+    <folder>train</folder>
+    <filename>52563.jpg</filename>
+    <path>D:\TT100K\data\train\52563.jpg</path>
+    <source>
+        <database>Unknown</database>
+    </source>
+    <size>
+        <width>2048</width>
+        <height>2048</height>
+        <depth>3</depth>
+    </size>
+    <segmented>0</segmented>
+    <object>
+        <name>i4</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1260</xmin>
+            <ymin>798</ymin>
+            <xmax>1307</xmax>
+            <ymax>850</ymax>
+        </bndbox>
+    </object>
+    <object>
+        <name>i2</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>1492</xmin>
+            <ymin>798</ymin>
+            <xmax>1542</xmax>
+            <ymax>849</ymax>
+        </bndbox>
+    </object>
+
+</annotation>
