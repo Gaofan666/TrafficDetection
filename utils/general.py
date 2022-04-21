@@ -520,7 +520,7 @@ def xywh2xyxy(x):
     return y
 
 
-def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0):
+def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0):  # 这里的x是labels[:, 1:]=[:,x,y,w,h]归一化
     # Convert nx4 boxes from [x, y, w, h] normalized to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[:, 0] = w * (x[:, 0] - x[:, 2] / 2) + padw  # top left x

@@ -99,11 +99,11 @@ def create_dataloader(path, imgsz, batch_size, stride, single_cls=False, hyp=Non
         dataset = LoadImagesAndLabels(path, imgsz, batch_size,
                                       augment=augment,  # augment images
                                       hyp=hyp,  # augmentation hyperparameters
-                                      rect=rect,  # rectangular training
-                                      cache_images=cache,
-                                      single_cls=single_cls,
-                                      stride=int(stride),
-                                      pad=pad,
+                                      rect=rect,  # rectangular training 矩形策略，不用改成正方形图片
+                                      cache_images=cache,  # 缓存文件，避免每次都要遍历图片
+                                      single_cls=single_cls,  # 单类别才会用到，标签值置为0
+                                      stride=int(stride),  # 丛输入到输出降采样的比例  32
+                                      pad=pad,  # 拼接四张图片时的补齐  马赛克
                                       image_weights=image_weights,
                                       prefix=prefix)
 
@@ -385,7 +385,7 @@ class LoadImagesAndLabels(Dataset):
         self.image_weights = image_weights
         self.rect = False if image_weights else rect
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
-        self.mosaic_border = [-img_size // 2, -img_size // 2]
+        self.mosaic_border = [-img_size // 2, -img_size // 2]  # 希望以什么样的中心点进行拼接
         self.stride = stride
         self.path = path
         self.albumentations = Albumentations() if augment else None
@@ -442,8 +442,8 @@ class LoadImagesAndLabels(Dataset):
                 x[:, 0] = 0
 
         n = len(shapes)  # number of images
-        bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index
-        nb = bi[-1] + 1  # number of batches
+        bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index 对所有数据进行batch索引
+        nb = bi[-1] + 1  # number of batches 一个epoch有多少个batch
         self.batch = bi  # batch index of image
         self.n = n
         self.indices = range(n)
@@ -497,7 +497,7 @@ class LoadImagesAndLabels(Dataset):
     def cache_labels(self, path=Path('./labels.cache'), prefix=''):
         # Cache dataset labels, check images and read shapes
         x = {}  # dict
-        nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # number missing, found, empty, corrupt, messages
+        nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # 打印number missing, found, empty, corrupt, messages，万一有什么问题
         desc = f"{prefix}Scanning '{path.parent / path.stem}' images and labels..."
         with Pool(NUM_THREADS) as pool:
             pbar = tqdm(pool.imap(verify_image_label, zip(self.img_files, self.label_files, repeat(prefix))),
@@ -539,11 +539,11 @@ class LoadImagesAndLabels(Dataset):
     #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
     #     return self
 
-    def __getitem__(self, index):
+    def __getitem__(self, index): # batch等于几，getitem就执行几次
         index = self.indices[index]  # linear, shuffled, or image_weights
 
         hyp = self.hyp
-        mosaic = self.mosaic and random.random() < hyp['mosaic']
+        mosaic = self.mosaic and random.random() < hyp['mosaic']  # mosaic=1.0
         if mosaic:
             # Load mosaic
             img, labels = load_mosaic(self, index)
@@ -574,7 +574,7 @@ class LoadImagesAndLabels(Dataset):
                                                  shear=hyp['shear'],
                                                  perspective=hyp['perspective'])
 
-        nl = len(labels)  # number of labels
+        nl = len(labels)  # number of labels 1.调整标签格式（进行马赛克变化后标签格式变了） 2.归一化标标签值
         if nl:
             labels[:, 1:5] = xyxy2xywhn(labels[:, 1:5], w=img.shape[1], h=img.shape[0], clip=True, eps=1E-3)
 
@@ -583,13 +583,13 @@ class LoadImagesAndLabels(Dataset):
             img, labels = self.albumentations(img, labels)
             nl = len(labels)  # update after albumentations
 
-            # HSV color-space
+            # HSV color-space 色调，饱和度，亮度
             augment_hsv(img, hgain=hyp['hsv_h'], sgain=hyp['hsv_s'], vgain=hyp['hsv_v'])
 
-            # Flip up-down
+            # Flip up-down 根据超参数判断是否要进行镜像/翻转
             if random.random() < hyp['flipud']:
                 img = np.flipud(img)
-                if nl:
+                if nl: # 数据如果变换了，标签也得变换
                     labels[:, 2] = 1 - labels[:, 2]
 
             # Flip left-right
@@ -601,11 +601,11 @@ class LoadImagesAndLabels(Dataset):
             # Cutouts
             # labels = cutout(img, labels, p=0.5)
 
-        labels_out = torch.zeros((nl, 6))
+        labels_out = torch.zeros((nl, 6)) # 标签转换成tensor格式
         if nl:
             labels_out[:, 1:] = torch.from_numpy(labels)
 
-        # Convert
+        # Convert pytorch格式比较特殊，channel first -- [3,h,w]  Opencv改成了BGR，需要调成RGB
         img = img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
         img = np.ascontiguousarray(img)
 
@@ -669,20 +669,23 @@ def load_image(self, i):
 
 def load_mosaic(self, index):
     # YOLOv5 4-mosaic loader. Loads 1 image + 3 random images into a 4-image mosaic
-    labels4, segments4 = [], []
-    s = self.img_size
-    yc, xc = [int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border]  # mosaic center x, y
-    indices = [index] + random.choices(self.indices, k=3)  # 3 additional image indices
-    random.shuffle(indices)
-    for i, index in enumerate(indices):
+    labels4, segments4 = [], []  # 存放合并图片后的标签
+    s = self.img_size  # 640
+    # 合并后的图片中心点，中心点随机 320, 2*640+（-320）假设x取-320  self.mosaic_border是事先定义好的
+    yc, xc = [int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border]
+    # 随机找另外三张照片的索引，与刚才读进来的一张图片进行合并 [0,32,15,63]
+    indices = [index] + random.choices(self.indices, k=3)
+    random.shuffle(indices)  # 打乱四张图片的顺序
+    for i, index in enumerate(indices):  # 拼接图片
         # Load image
-        img, _, (h, w) = load_image(self, index)
+        img, _, (h, w) = load_image(self, index)  # 依次读取每张图片
 
         # place img in img4
-        if i == 0:  # top left
-            img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
-            x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
-            x1b, y1b, x2b, y2b = w - (x2a - x1a), h - (y2a - y1a), w, h  # xmin, ymin, xmax, ymax (small image)
+        # 1.初始化大图 2.计算当前图片放在大图中什么位置 3.计算在小图中取那一部分放到大图中
+        if i == 0:  # top left 索引为0,表示第一张图片，放到左上角
+            img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)  # 初始化大图 1280*1280*3  用先验值/均值114进行填充
+            x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)小图在大图中的位置
+            x1b, y1b, x2b, y2b = w - (x2a - x1a), h - (y2a - y1a), w, h  # xmin, ymin, xmax, ymax (small image) 小图取哪一部分
         elif i == 1:  # top right
             x1a, y1a, x2a, y2a = xc, max(yc - h, 0), min(xc + w, s * 2), yc
             x1b, y1b, x2b, y2b = 0, h - (y2a - y1a), min(w, x2a - x1a), h
@@ -693,25 +696,27 @@ def load_mosaic(self, index):
             x1a, y1a, x2a, y2a = xc, yc, min(xc + w, s * 2), min(s * 2, yc + h)
             x1b, y1b, x2b, y2b = 0, 0, min(w, x2a - x1a), min(y2a - y1a, h)
 
-        img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
+        img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax] 小图放到大图中
         padw = x1a - x1b
         padh = y1a - y1b
 
-        # Labels
+        # Labels 标签值要重新计算，因为放到大图中了
         labels, segments = self.labels[index].copy(), self.segments[index].copy()
         if labels.size:
+            # 标签值转换为相对于大图的
             labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padw, padh)  # normalized xywh to pixel xyxy format
+            # Convert normalized segments into pixel segments, shape (n,2)
             segments = [xyn2xy(x, w, h, padw, padh) for x in segments]
         labels4.append(labels)
         segments4.extend(segments)
 
-    # Concat/clip labels
+    # Concat/clip labels 如果小图中有标注框越界了，对标注框的坐标进行处理，越界的部分直接去掉
     labels4 = np.concatenate(labels4, 0)
     for x in (labels4[:, 1:], *segments4):
         np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
     # img4, labels4 = replicate(img4, labels4)  # replicate
 
-    # Augment
+    # Augment 数据增强：对整合的大图再进行随机的 旋转，平移，缩放，裁剪，透视变换
     img4, labels4, segments4 = copy_paste(img4, labels4, segments4, p=self.hyp['copy_paste'])
     img4, labels4 = random_perspective(img4, labels4, segments4,
                                        degrees=self.hyp['degrees'],

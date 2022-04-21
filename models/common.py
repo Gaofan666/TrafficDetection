@@ -42,7 +42,7 @@ class Conv(nn.Module):
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
-        return self.act(self.bn(self.conv(x)))
+        return self.act(self.bn(self.conv(x))) # 卷积与batch_normalization结合
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
@@ -109,12 +109,12 @@ class BottleneckCSP(nn.Module):
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
-        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False) # cv2是走的比较少的那部分
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False) # cv3是走的多的那部分
         self.cv4 = Conv(2 * c_, c2, 1, 1)
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
         self.act = nn.LeakyReLU(0.1, inplace=True)
-        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]) # 跳转到Bottleneck
 
     def forward(self, x):
         y1 = self.cv3(self.m(self.cv1(x)))

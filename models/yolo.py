@@ -88,7 +88,7 @@ class Model(nn.Module):
             self.yaml = cfg  # model dict
         else:  # is *.yaml
             import yaml  # for torch hub
-            self.yaml_file = Path(cfg).name
+            self.yaml_file = Path(cfg).name # 读取配置文件
             with open(cfg, errors='ignore') as f:
                 self.yaml = yaml.safe_load(f)  # model dict
 
@@ -146,7 +146,7 @@ class Model(nn.Module):
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
             if profile:
                 self._profile_one_layer(m, x, dt)
-            x = m(x)  # run
+            x = m(x)  # run 上面不会执行，直接执行这个语句 跳转到common.py 对应模块下的forwar函数
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
@@ -250,9 +250,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     LOGGER.info('\n%3s%18s%3s%10s  %-40s%-30s' % ('', 'from', 'n', 'params', 'module', 'arguments'))
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
     na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
-    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
+    no = na * (nc + 5)  # number of outputs = anchors * (classes + 5) 5是置信度
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    # 遍历拿到每一个层
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
@@ -261,14 +262,14 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             except NameError:
                 pass
 
-        n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
+        n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain 乘1/3如果小于1,模块个数置为1
         if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                  BottleneckCSP, C3, C3TR, C3SPP, C3Ghost]:
-            c1, c2 = ch[f], args[0]
+            c1, c2 = ch[f], args[0]  # c1是输入的通道数3  c2是输出的通道数64/2=32
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
-            args = [c1, c2, *args[1:]]
+            args = [c1, c2, *args[1:]] # 3,32,3  最后的3表示卷积核的大小
             if m in [BottleneckCSP, C3, C3TR, C3Ghost]:
                 args.insert(2, n)  # number of repeats
                 n = 1

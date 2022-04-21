@@ -172,7 +172,7 @@ def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, sc
     # ax[0].imshow(im[:, :, ::-1])  # base
     # ax[1].imshow(im2[:, :, ::-1])  # warped
 
-    # Transform label coordinates
+    # Transform label coordinates 数据变了，标签值也要一起变化  难点，最好用源码
     n = len(targets)
     if n:
         use_segments = any(x.any() for x in segments)

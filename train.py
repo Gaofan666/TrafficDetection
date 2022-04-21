@@ -1,4 +1,3 @@
-# YOLOv5 🚀 by Ultralytics, GPL-3.0 license
 """
 Train a YOLOv5 model on a custom dataset
 
@@ -110,7 +109,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     # Model
     check_suffix(weights, '.pt')  # check weights
     pretrained = weights.endswith('.pt')
-    if pretrained:
+    if pretrained:  # 有预训练模型的话，会自动下载，最好在github下载好，然后放到对应的位置
         with torch_distributed_zero_first(LOCAL_RANK):
             weights = attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location=device)  # load checkpoint
@@ -121,9 +120,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create 就是之前讲的那个Model
 
-    # Freeze
+    # Freeze 要不要冻结一些层做迁移操作 ，没必要
     freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
     for k, v in model.named_parameters():
         v.requires_grad = True  # train all layers
@@ -131,13 +130,13 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             print(f'freezing {k}')
             v.requires_grad = False
 
-    # Optimizer
-    nbs = 64  # nominal batch size
+    # Optimizer  优化器
+    nbs = 64  # nominal batch size 累计多少次更新一下模型，64/4（batchsize）=16  batchsize=16的话 64/16=4
     accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing
     hyp['weight_decay'] *= batch_size * accumulate / nbs  # scale weight_decay
     LOGGER.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
-    g0, g1, g2 = [], [], []  # optimizer parameter groups
+    g0, g1, g2 = [], [], []  # optimizer parameter groups 设置了个优化组：权重，偏置，其他参数
     for v in model.modules():
         if hasattr(v, 'bias') and isinstance(v.bias, nn.Parameter):  # bias
             g2.append(v.bias)
@@ -146,7 +145,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
             g1.append(v.weight)
 
-    if opt.adam:
+    if opt.adam:  # 优化器与学习率衰减
         optimizer = Adam(g0, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     else:
         optimizer = SGD(g0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
@@ -164,54 +163,56 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         lf = one_cycle(1, hyp['lrf'], epochs)  # cosine 1->hyp['lrf']
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # plot_lr_scheduler(optimizer, scheduler, epochs)
 
-    # EMA
+    # EMA Exponential moving average 滑动平均能让参数更新更平滑一点，不至于波动太大
     ema = ModelEMA(model) if RANK in [-1, 0] else None
 
-    # Resume
+    # Resume        表示要不要接着之前进行训练
+    # 这个best_fitness是sum[0.0,0.0,0.1,0.9]*[精确度，召回率，mAP@0.5,mAP@0.5:0.95]
+    # 相当于一个综合指标来判断每一次得分
     start_epoch, best_fitness = 0, 0.0
     if pretrained:
-        # Optimizer
+        # Optimizer  优化器
         if ckpt['optimizer'] is not None:
             optimizer.load_state_dict(ckpt['optimizer'])
             best_fitness = ckpt['best_fitness']
 
-        # EMA
+        # EMA  从哪里开始继续训练？？？
         if ema and ckpt.get('ema'):
             ema.ema.load_state_dict(ckpt['ema'].float().state_dict())
             ema.updates = ckpt['updates']
 
-        # Epochs
+        # Epochs  已经训练类多少次了
         start_epoch = ckpt['epoch'] + 1
-        if resume:
+        if resume:   # 如果设置的epoch为100,已经训练了150轮，那么再训练100
             assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.'
-        if epochs < start_epoch:
+        if epochs < start_epoch: # 假设设置的epoch为300,已经训练了100轮，那么会继续训练200轮
             LOGGER.info(f"{weights} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {epochs} more epochs.")
             epochs += ckpt['epoch']  # finetune additional epochs
 
         del ckpt, csd
 
-    # Image sizes
+    # Image sizes   是总的下采样比例，目的是看下数据的大小能不能整除这个比例
     gs = max(int(model.stride.max()), 32)  # grid size (max stride)
     nl = model.model[-1].nl  # number of detection layers (used for scaling hyp['obj'])
     imgsz = check_img_size(opt.imgsz, gs, floor=gs * 2)  # verify imgsz is gs-multiple
 
-    # DP mode
+    # DP mode  如果你的机器有多个GPU，需要改一下参数
     if cuda and RANK == -1 and torch.cuda.device_count() > 1:
         logging.warning('DP not recommended, instead use torch.distributed.run for best DDP Multi-GPU results.\n'
                         'See Multi-GPU Tutorial at https://github.com/ultralytics/yolov5/issues/475 to get started.')
         model = torch.nn.DataParallel(model)
 
-    # SyncBatchNorm
+    # SyncBatchNorm   多卡同步做BN
     if opt.sync_bn and cuda and RANK != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         LOGGER.info('Using SyncBatchNorm()')
 
-    # Trainloader
+    # Trainloader 加载数据
     train_loader, dataset = create_dataloader(train_path, imgsz, batch_size // WORLD_SIZE, gs, single_cls,
                                               hyp=hyp, augment=True, cache=opt.cache, rect=opt.rect, rank=LOCAL_RANK,
                                               workers=workers, image_weights=opt.image_weights, quad=opt.quad,
                                               prefix=colorstr('train: '))
-    mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class
+    mlc = int(np.concatenate(dataset.labels, 0)[:, 0].max())  # max label class 判断类别数是否正常
     nb = len(train_loader)  # number of batches
     assert mlc < nc, f'Label class {mlc} exceeds nc={nc} in {data}. Possible class labels are 0-{nc - 1}'
 
@@ -237,31 +238,36 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
         callbacks.run('on_pretrain_routine_end')
 
-    # DDP mode
+    # DDP mode  多机多卡，有时候DP可能会出现负载不均衡，这个能直接解决该问题，DP用的时候经常IP为0的GPU满载，其他的不咋用
     if cuda and RANK != -1:
         model = DDP(model, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
 
-    # Model parameters
+    # Model parameters  类别个数
     hyp['box'] *= 3. / nl  # scale to layers
     hyp['cls'] *= nc / 80. * 3. / nl  # scale to classes and layers
     hyp['obj'] *= (imgsz / 640) ** 2 * 3. / nl  # scale to image size and layers
     hyp['label_smoothing'] = opt.label_smoothing
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
+    # 根据标签设置各类别初始权重的大小
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc  # attach class weights
     model.names = names
 
     # Start training
     t0 = time.time()
+    # 热身最大的轮数
     nw = max(round(hyp['warmup_epochs'] * nb), 1000)  # number of warmup iterations, max(3 epochs, 1k iterations)
     # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     last_opt_step = -1
+    # 日志要保存的结果，先初始化
     maps = np.zeros(nc)  # mAP per class
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
+    # 混合精度训练，可以提速
     scaler = amp.GradScaler(enabled=cuda)
     stopper = EarlyStopping(patience=opt.patience)
     compute_loss = ComputeLoss(model)  # init loss class
+    # 打印信息
     LOGGER.info(f'Image sizes {imgsz} train, {imgsz} val\n'
                 f'Using {train_loader.num_workers} dataloader workers\n'
                 f"Logging results to {colorstr('bold', save_dir)}\n"
@@ -270,7 +276,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         model.train()
 
         # Update image weights (optional, single-GPU only)
-        if opt.image_weights:
+        if opt.image_weights:  # 先判断一下要不要进行标签权重
             cw = model.class_weights.cpu().numpy() * (1 - maps) ** 2 / nc  # class weights
             iw = labels_to_image_weights(dataset.labels, nc=nc, class_weights=cw)  # image weights
             dataset.indices = random.choices(range(dataset.n), weights=iw, k=dataset.n)  # rand weighted idx
@@ -283,12 +289,15 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         if RANK != -1:
             train_loader.sampler.set_epoch(epoch)
         pbar = enumerate(train_loader)
+        # 进度条
         LOGGER.info(('\n' + '%10s' * 7) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'labels', 'img_size'))
         if RANK in [-1, 0]:
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
+        # 一个batch一个batch的取数据
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
+            # 归一化
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
 
             # Warmup
@@ -302,7 +311,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                     if 'momentum' in x:
                         x['momentum'] = np.interp(ni, xi, [hyp['warmup_momentum'], hyp['momentum']])
 
-            # Multi-scale
+            # Multi-scale  各种输入的大小，也是随机的范围 [imgsz * 0.5, imgsz * 1.5 + gs]  gs=32
+            # 正常情况下会resize为640*640  也可以是不同大小 前提是必须能被32整除
             if opt.multi_scale:
                 sz = random.randrange(imgsz * 0.5, imgsz * 1.5 + gs) // gs * gs  # size
                 sf = sz / max(imgs.shape[2:])  # scale factor
@@ -313,22 +323,23 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
             # Forward
             with amp.autocast(enabled=cuda):
                 pred = model(imgs)  # forward
+                # 总损失，分类损失，回归损失，置信度损失
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
 
-            # Backward
+            # Backward 反向传播
             scaler.scale(loss).backward()
 
-            # Optimize
+            # Optimize  相当于backward多少次才更新一次参数
             if ni - last_opt_step >= accumulate:
                 scaler.step(optimizer)  # optimizer.step
                 scaler.update()
                 optimizer.zero_grad()
                 if ema:
-                    ema.update(model)
+                    ema.update(model)  # 64/4=16次之后才进行参数更新
                 last_opt_step = ni
 
             # Log
@@ -433,14 +444,14 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
 def parse_opt(known=False):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default=ROOT / 'yolov5s.pt', help='initial weights path')
-    parser.add_argument('--cfg', type=str, default='', help='model.yaml path')
-    parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
-    parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--epochs', type=int, default=300)
-    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
-    parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
-    parser.add_argument('--rect', action='store_true', help='rectangular training')
+    parser.add_argument('--weights', type=str, default=ROOT / 'weights/yolov5s.pt', help='initial weights path')
+    parser.add_argument('--cfg', type=str, default='models/yolov5s6_tt100k.yaml', help='model.yaml path')#默认为 ‘ ’
+    parser.add_argument('--data', type=str, default=ROOT / 'data/voc_tt100k.yaml', help='dataset.yaml path') #coco128.yaml
+    parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch.yaml', help='hyperparameters path') #超参数
+    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--batch-size', type=int, default=8, help='total batch size for all GPUs')#16
+    parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=1280, help='train, val image size (pixels)') #640
+    parser.add_argument('--rect', action='store_true', help='rectangular training') # 矩形训练
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--noval', action='store_true', help='only validate final epoch')
@@ -454,13 +465,13 @@ def parse_opt(known=False):
     parser.add_argument('--single-cls', action='store_true', help='train multi-class data as single-class')
     parser.add_argument('--adam', action='store_true', help='use torch.optim.Adam() optimizer')
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
-    parser.add_argument('--workers', type=int, default=8, help='maximum number of dataloader workers')
+    parser.add_argument('--workers', type=int, default=4, help='maximum number of dataloader workers')#8
     parser.add_argument('--project', default=ROOT / 'runs/train', help='save to project/name')
-    parser.add_argument('--name', default='exp', help='save to project/name')
+    parser.add_argument('--name', default='base+p6', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--quad', action='store_true', help='quad dataloader')
     parser.add_argument('--linear-lr', action='store_true', help='linear LR')
-    parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon')
+    parser.add_argument('--label-smoothing', type=float, default=0.0, help='Label smoothing epsilon') #0.0不使用标签平滑
     parser.add_argument('--patience', type=int, default=100, help='EarlyStopping patience (epochs without improvement)')
     parser.add_argument('--freeze', type=int, default=0, help='Number of layers to freeze. backbone=10, all=24')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
