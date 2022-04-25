@@ -38,11 +38,15 @@ VID_FORMATS = ['mov', 'avi', 'mp4', 'mpg', 'mpeg', 'm4v', 'wmv', 'mkv']  # accep
 NUM_THREADS = min(8, os.cpu_count())  # number of multiprocessing threads
 
 # Get orientation exif tag
+"""
+可交换图片文件格式 Exchangeable image file format 简称Exif
+是专门为数码相机的照片设定的，可以记录数码照片的属性信息和拍摄数据
+"""
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
         break
 
-
+# 返回文件列表的hash值
 def get_hash(paths):
     # Returns a single hash value of a list of paths (files or dirs)
     size = sum(os.path.getsize(p) for p in paths if os.path.exists(p))  # sizes
@@ -50,12 +54,12 @@ def get_hash(paths):
     h.update(''.join(paths).encode())  # hash paths
     return h.hexdigest()  # return hash
 
-
+# 获取图片的宽高信息
 def exif_size(img):
     # Returns exif-corrected PIL size
     s = img.size  # (width, height)
     try:
-        rotation = dict(img._getexif().items())[orientation]
+        rotation = dict(img._getexif().items())[orientation] # 调整数码相机照片方向
         if rotation == 6:  # rotation 270
             s = (s[1], s[0])
         elif rotation == 8:  # rotation 90
@@ -372,27 +376,29 @@ def img2label_paths(img_paths):
     sa, sb = os.sep + 'images' + os.sep, os.sep + 'labels' + os.sep  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
 
-
+# 自定义的数据集 继承自Dataset，重写抽象方法：__len()__   __getitem()__
 class LoadImagesAndLabels(Dataset):
     # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
     cache_version = 0.5  # dataset labels *.cache version
 
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
                  cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
-        self.img_size = img_size
-        self.augment = augment
-        self.hyp = hyp
-        self.image_weights = image_weights
-        self.rect = False if image_weights else rect
+        self.img_size = img_size  # 输入图片大小
+        self.augment = augment # 数据增强
+        self.hyp = hyp # 超参数的字典，读取自yaml文件
+        self.image_weights = image_weights # 图片采样权重，有的类别采样多，有的少
+        self.rect = False if image_weights else rect # 矩阵训练
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
         self.mosaic_border = [-img_size // 2, -img_size // 2]  # 希望以什么样的中心点进行拼接
-        self.stride = stride
+        self.stride = stride # 模型下采样的步长
         self.path = path
         self.albumentations = Albumentations() if augment else None
 
         try:
             f = []  # image files
             for p in path if isinstance(path, list) else [path]:
+                # 获取数据集路径path,包含图片路径的txt文件或者包含图片的文件夹路径
+                # 使用pathlib.Path生成与操作系统无关的路径，因为不同操作系统路径的‘\’有所不同
                 p = Path(p)  # os-agnostic
                 if p.is_dir():  # dir
                     f += glob.glob(str(p / '**' / '*.*'), recursive=True)
@@ -646,6 +652,7 @@ class LoadImagesAndLabels(Dataset):
 
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
+# load_image加载图片并根据设定的输入大小与图片原大小的比例ratio进行resize
 def load_image(self, i):
     # loads 1 image from dataset index 'i', returns im, original hw, resized hw
     im = self.imgs[i]
@@ -659,6 +666,7 @@ def load_image(self, i):
             assert im is not None, 'Image Not Found ' + path
         h0, w0 = im.shape[:2]  # orig hw
         r = self.img_size / max(h0, w0)  # ratio
+        # 根据ratio选择不同的插值方式
         if r != 1:  # if sizes are not equal
             im = cv2.resize(im, (int(w0 * r), int(h0 * r)),
                             interpolation=cv2.INTER_AREA if r < 1 and not self.augment else cv2.INTER_LINEAR)
@@ -718,7 +726,7 @@ def load_mosaic(self, index):
 
     # Augment 数据增强：对整合的大图再进行随机的 旋转，平移，缩放，裁剪，透视变换
     img4, labels4, segments4 = copy_paste(img4, labels4, segments4, p=self.hyp['copy_paste'])
-    img4, labels4 = random_perspective(img4, labels4, segments4,
+    img4, labels4 = random_perspective(img4, labels4, segments4,       # 从hyp.strach.yaml文件获取超参数
                                        degrees=self.hyp['degrees'],
                                        translate=self.hyp['translate'],
                                        scale=self.hyp['scale'],

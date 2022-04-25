@@ -33,12 +33,13 @@ class MemoryEfficientMish(nn.Module):
     class F(torch.autograd.Function):
         @staticmethod
         def forward(ctx, x):
-            ctx.save_for_backward(x)
+            # save_for_backward 可以将模型保存起来，用于后续的backward函数
+            ctx.save_for_backward(x) # 会保留此input全部信息，并提供避免in-place操作导致的input在backward被修改的情况
             return x.mul(torch.tanh(F.softplus(x)))  # x * tanh(ln(1 + exp(x)))
 
         @staticmethod
         def backward(ctx, grad_output):
-            x = ctx.saved_tensors[0]
+            x = ctx.saved_tensors[0]  # 返回forward函数内存储的对象
             sx = torch.sigmoid(x)
             fx = F.softplus(x).tanh()
             return grad_output * (fx + x * sx * (1 - fx * fx))

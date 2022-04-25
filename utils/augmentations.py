@@ -97,6 +97,9 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
 
     # Scale ratio (new / old)
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    """
+    resize到img大小的时候，如果没有设置上采样的话，则只进行下采样，因为上采样图片会让图片模糊，影响训练
+    """
     if not scaleup:  # only scale down, do not scale up (for better val mAP)
         r = min(r, 1.0)
 
@@ -104,20 +107,22 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     ratio = r, r  # width, height ratios
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
     dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
-    if auto:  # minimum rectangle
+    if auto:  # minimum rectangle  # 获取最小的矩形填充
         dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+    # 如果scaleFill=True 则不进行填充，直接resize成img_size,任由图片进行拉伸和压缩
     elif scaleFill:  # stretch
         dw, dh = 0.0, 0.0
         new_unpad = (new_shape[1], new_shape[0])
         ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
-
+    # 计算上下左右填充大小
     dw /= 2  # divide padding into 2 sides
     dh /= 2
 
     if shape[::-1] != new_unpad:  # resize
         im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1)) # 从什么位置进行填充
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    # 进行填充
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return im, ratio, (dw, dh)
 
@@ -135,12 +140,12 @@ def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, sc
     C[0, 2] = -im.shape[1] / 2  # x translation (pixels)
     C[1, 2] = -im.shape[0] / 2  # y translation (pixels)
 
-    # Perspective
+    # Perspective 透视变换
     P = np.eye(3)
     P[2, 0] = random.uniform(-perspective, perspective)  # x perspective (about y)
     P[2, 1] = random.uniform(-perspective, perspective)  # y perspective (about x)
 
-    # Rotation and Scale
+    # Rotation and Scale 旋转和缩放的仿射矩阵系数
     R = np.eye(3)
     a = random.uniform(-degrees, degrees)
     # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
@@ -148,17 +153,17 @@ def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, sc
     # s = 2 ** random.uniform(-scale, scale)
     R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
 
-    # Shear
+    # Shear 裁剪仿射矩阵
     S = np.eye(3)
     S[0, 1] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # x shear (deg)
     S[1, 0] = math.tan(random.uniform(-shear, shear) * math.pi / 180)  # y shear (deg)
 
-    # Translation
+    # Translation 设置平移的仿射矩阵
     T = np.eye(3)
     T[0, 2] = random.uniform(0.5 - translate, 0.5 + translate) * width  # x translation (pixels)
     T[1, 2] = random.uniform(0.5 - translate, 0.5 + translate) * height  # y translation (pixels)
 
-    # Combined rotation matrix
+    # Combined rotation matrix 融合仿射矩阵并作用在图片上
     M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
     if (border[0] != 0) or (border[1] != 0) or (M != np.eye(3)).any():  # image changed
         if perspective:
@@ -199,11 +204,11 @@ def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, sc
             y = xy[:, [1, 3, 5, 7]]
             new = np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
 
-            # clip
+            # clip 去除上面一系列操作过后被裁剪过小的框
             new[:, [0, 2]] = new[:, [0, 2]].clip(0, width)
             new[:, [1, 3]] = new[:, [1, 3]].clip(0, height)
 
-        # filter candidates
+        # filter candidates  过滤候选框
         i = box_candidates(box1=targets[:, 1:5].T * s, box2=new.T, area_thr=0.01 if use_segments else 0.10)
         targets = targets[i]
         targets[:, 1:5] = new[i]
@@ -234,7 +239,7 @@ def copy_paste(im, labels, segments, p=0.5):
 
     return im, labels, segments
 
-
+# 去除图片的一部分并填充颜色
 def cutout(im, labels, p=0.5):
     # Applies image cutout augmentation https://arxiv.org/abs/1708.04552
     if random.random() < p:
@@ -272,7 +277,7 @@ def mixup(im, labels, im2, labels2):
 
 def box_candidates(box1, box2, wh_thr=2, ar_thr=20, area_thr=0.1, eps=1e-16):  # box1(4,n), box2(4,n)
     # Compute candidate boxes: box1 before augment, box2 after augment, wh_thr (pixels), aspect_ratio_thr, area_ratio
-    w1, h1 = box1[2] - box1[0], box1[3] - box1[1]
+    w1, h1 = box1[2] - box1[0], box1[3] - box1[1] # 对比box1和box2，挑选出合适的框 根据上面的三个阈值
     w2, h2 = box2[2] - box2[0], box2[3] - box2[1]
     ar = np.maximum(w2 / (h2 + eps), h2 / (w2 + eps))  # aspect ratio
     return (w2 > wh_thr) & (h2 > wh_thr) & (w2 * h2 / (w1 * h1 + eps) > area_thr) & (ar < ar_thr)  # candidates

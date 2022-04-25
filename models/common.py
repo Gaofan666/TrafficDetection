@@ -25,7 +25,7 @@ from utils.torch_utils import time_sync
 
 LOGGER = logging.getLogger(__name__)
 
-
+# 为same卷积或same池化自动扩充
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
@@ -47,11 +47,11 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         return self.act(self.conv(x))
 
-
+# 深度可分离卷积
 class DWConv(Conv):
     # Depth-wise convolution class
     def __init__(self, c1, c2, k=1, s=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
-        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), act=act)
+        super().__init__(c1, c2, k, s, g=math.gcd(c1, c2), act=act) # math.gcd返回的是最大公约数
 
 
 class TransformerLayer(nn.Module):
@@ -100,6 +100,7 @@ class Bottleneck(nn.Module):
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
+        # 根据self.add的值确定是否有shortcut
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 
@@ -114,6 +115,7 @@ class BottleneckCSP(nn.Module):
         self.cv4 = Conv(2 * c_, c2, 1, 1)
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
         self.act = nn.LeakyReLU(0.1, inplace=True)
+        # *号操作符可以把一个list拆成一个个独立的元素
         self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)]) # 跳转到Bottleneck
 
     def forward(self, x):
@@ -130,6 +132,7 @@ class C3(nn.Module):
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
         self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
+        # *号操作符可以把一个list拆成一个个独立的元素
         self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
         # self.m = nn.Sequential(*[CrossConv(c_, c_, 3, 1, g, 1.0, shortcut) for _ in range(n)])
 
@@ -160,7 +163,7 @@ class C3Ghost(C3):
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*[GhostBottleneck(c_, c_) for _ in range(n)])
 
-
+# 金字塔空间池化
 class SPP(nn.Module):
     # Spatial Pyramid Pooling (SPP) layer https://arxiv.org/abs/1406.4729
     def __init__(self, c1, c2, k=(5, 9, 13)):

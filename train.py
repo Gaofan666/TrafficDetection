@@ -73,6 +73,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
             hyp = yaml.safe_load(f)  # load hyps dict
+    # 训练时的参数，各epoch情况，测试集的结果全部保存
     LOGGER.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
 
     # Save run settings
@@ -120,7 +121,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         model.load_state_dict(csd, strict=False)  # load
         LOGGER.info(f'Transferred {len(csd)}/{len(model.state_dict())} items from {weights}')  # report
     else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create 就是之前讲的那个Model
+        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create 构建Model
 
     # Freeze 要不要冻结一些层做迁移操作 ，没必要
     freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
@@ -273,7 +274,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 f"Logging results to {colorstr('bold', save_dir)}\n"
                 f'Starting training for {epochs} epochs...')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
-        model.train()
+        model.train()  # 开始训练 一个batch一个batch来  Sets the module in training mode
 
         # Update image weights (optional, single-GPU only)
         if opt.image_weights:  # 先判断一下要不要进行标签权重
@@ -320,9 +321,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = nn.functional.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Forward
+            # Forward 前向传播
             with amp.autocast(enabled=cuda):
-                pred = model(imgs)  # forward
+                pred = model(imgs)  # forward 传入图片数据
                 # 总损失，分类损失，回归损失，置信度损失
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 if RANK != -1:
