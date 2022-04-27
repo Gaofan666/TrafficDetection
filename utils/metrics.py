@@ -17,15 +17,15 @@ def fitness(x):
     w = [0.0, 0.0, 0.1, 0.9]  # weights for [P, R, mAP@0.5, mAP@0.5:0.95]
     return (x[:, :4] * w).sum(1)
 
-
+# 计算类别的AP
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=()):
     """ Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     # Arguments
         tp:  True positives (nparray, nx1 or nx10).
-        conf:  Objectness value from 0-1 (nparray).
-        pred_cls:  Predicted object classes (nparray).
-        target_cls:  True object classes (nparray).
+        conf:  Objectness value from 0-1 (nparray). 目标得分
+        pred_cls:  Predicted object classes (nparray). 预测物体的类别
+        target_cls:  True object classes (nparray). 真正物体的类别
         plot:  Plot precision-recall curve at mAP@0.5
         save_dir:  Plot save directory
     # Returns
@@ -33,17 +33,17 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
     """
 
     # Sort by objectness
-    i = np.argsort(-conf)
+    i = np.argsort(-conf) # 从小到大排序
     tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
 
     # Find unique classes
-    unique_classes = np.unique(target_cls)
+    unique_classes = np.unique(target_cls) # 不一样的类别数
     nc = unique_classes.shape[0]  # number of classes, number of detections
 
-    # Create Precision-Recall curve and compute AP for each class
+    # Create Precision-Recall curve and compute AP for each class 对每个类别绘制PR曲线
     px, py = np.linspace(0, 1, 1000), []  # for plotting
-    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000))
-    for ci, c in enumerate(unique_classes):
+    ap, p, r = np.zeros((nc, tp.shape[1])), np.zeros((nc, 1000)), np.zeros((nc, 1000)) # 初始化ap,p,r =0
+    for ci, c in enumerate(unique_classes): # 迭代
         i = pred_cls == c
         n_l = (target_cls == c).sum()  # number of labels
         n_p = i.sum()  # number of predictions
@@ -51,25 +51,26 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
         if n_p == 0 or n_l == 0:
             continue
         else:
-            # Accumulate FPs and TPs
+            # Accumulate FPs and TPs 累计值
             fpc = (1 - tp[i]).cumsum(0)
             tpc = tp[i].cumsum(0)
 
-            # Recall
+            # Recall 计算召回率
             recall = tpc / (n_l + 1e-16)  # recall curve
+            # 插值
             r[ci] = np.interp(-px, -conf[i], recall[:, 0], left=0)  # negative x, xp because xp decreases
 
-            # Precision
+            # Precision 准确率
             precision = tpc / (tpc + fpc)  # precision curve
             p[ci] = np.interp(-px, -conf[i], precision[:, 0], left=1)  # p at pr_score
 
             # AP from recall-precision curve
-            for j in range(tp.shape[1]):
+            for j in range(tp.shape[1]): # j=9 0-9共10个对应mAP 0.5-0.95    ci是第i个类别
                 ap[ci, j], mpre, mrec = compute_ap(recall[:, j], precision[:, j])
                 if plot and j == 0:
                     py.append(np.interp(px, mrec, mpre))  # precision at mAP@0.5
 
-    # Compute F1 (harmonic mean of precision and recall)
+    # Compute F1 (harmonic mean of precision and recall)  F1-score
     f1 = 2 * p * r / (p + r + 1e-16)
     if plot:
         plot_pr_curve(px, py, ap, Path(save_dir) / 'PR_curve.png', names)
@@ -80,7 +81,7 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
     i = f1.mean(0).argmax()  # max F1 index
     return p[:, i], r[:, i], ap, f1[:, i], unique_classes.astype('int32')
 
-
+# 根据PR曲线计算AP
 def compute_ap(recall, precision):
     """ Compute the average precision, given the recall and precision curves
     # Arguments
@@ -95,14 +96,15 @@ def compute_ap(recall, precision):
     mpre = np.concatenate(([1.0], precision, [0.0]))
 
     # Compute the precision envelope
+    # 人为的把PR曲线做成单调递减的，把这个曲线给填的鼓了起来  为了计算方便，AP本来是锯齿型，鼓起来后是矩形
     mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))
 
-    # Integrate area under curve
+    # Integrate area under curve 积分求曲线下方的面积
     method = 'interp'  # methods: 'continuous', 'interp'
     if method == 'interp':
-        x = np.linspace(0, 1, 101)  # 101-point interp (COCO)
-        ap = np.trapz(np.interp(x, mrec, mpre), x)  # integrate
-    else:  # 'continuous'
+        x = np.linspace(0, 1, 101)  # 101-point interp (COCO) 插值，鼓起来后有的点没有，进行插值
+        ap = np.trapz(np.interp(x, mrec, mpre), x)  # integrate    trapz是积分的，梯形积分
+    else:  # 'continuous'  AP计算之积分法 ，先求出recall有变化的点，计算每个方块的面积
         i = np.where(mrec[1:] != mrec[:-1])[0]  # points where x axis (recall) changes
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])  # area under curve
 

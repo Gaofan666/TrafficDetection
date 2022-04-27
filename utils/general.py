@@ -90,6 +90,7 @@ def methods(instance):
 def set_logging(rank=-1, verbose=True):
     logging.basicConfig(
         format="%(message)s",
+        # 设置日志保存的级别，如果rank是0或-1,就用Logging.INFO,否则用logging.WARN
         level=logging.INFO if (verbose and rank in [-1, 0]) else logging.WARN)
 
 
@@ -97,7 +98,7 @@ def print_args(name, opt):
     # Print argparser arguments
     print(colorstr(f'{name}: ') + ', '.join(f'{k}={v}' for k, v in vars(opt).items()))
 
-
+# 初始化随机化种子
 def init_seeds(seed=0):
     # Initialize random number generator (RNG) seeds https://pytorch.org/docs/stable/notes/randomness.html
     # cudnn seed 0 settings are slower and more reproducible, else faster and less reproducible
@@ -107,9 +108,10 @@ def init_seeds(seed=0):
     torch.manual_seed(seed)
     cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False)
 
-
+# 获取最近训练出来的权重文件last.pt，
 def get_latest_run(search_dir='.'):
     # Return path to most recent 'last.pt' in /runs (i.e. to --resume from)
+    # glob.glob（）匹配所有符合条件的文件，并以列表的方式返回
     last_list = glob.glob(f'{search_dir}/**/last*.pt', recursive=True)
     return max(last_list, key=os.path.getctime) if last_list else ''
 
@@ -197,7 +199,7 @@ def check_online():
     except OSError:
         return False
 
-
+# 检查当前版本与git是否一致，如果不一致，提醒用户
 @try_except
 def check_git_status():
     # Recommend 'git pull' if code is out of date
@@ -265,13 +267,13 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
             f"{prefix} ⚠️ {colorstr('bold', 'Restart runtime or rerun command for updates to take effect')}\n"
         print(emojis(s))
 
-
+# 检查图片是否是s（32）的整数倍;不是则调整图像尺寸
 def check_img_size(imgsz, s=32, floor=0):
     # Verify image size is a multiple of stride s in each dimension
     if isinstance(imgsz, int):  # integer i.e. img_size=640
         new_size = max(make_divisible(imgsz, int(s)), floor)
-    else:  # list i.e. img_size=[640, 480]
-        new_size = [max(make_divisible(x, int(s)), floor) for x in imgsz]
+    else:  # list i.e. img_size=[640, 480] make_divisible函数会把图片向上调整到最最小的32的整数倍
+        new_size = [max(make_divisible(x, int(s)), floor) for x in imgsz] # 32的倍数
     if new_size != imgsz:
         print(f'WARNING: --img-size {imgsz} must be multiple of max stride {s}, updating to {new_size}')
     return new_size

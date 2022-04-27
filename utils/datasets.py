@@ -95,7 +95,7 @@ def exif_transpose(image):
             image.info["exif"] = exif.tobytes()
     return image
 
-
+# 只有一个GPU的时候rank=-1
 def create_dataloader(path, imgsz, batch_size, stride, single_cls=False, hyp=None, augment=False, cache=False, pad=0.0,
                       rect=False, rank=-1, workers=8, image_weights=False, quad=False, prefix=''):
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache
@@ -361,7 +361,7 @@ class LoadStreams:
         # Stack
         img = np.stack(img, 0)
 
-        # Convert
+        # Convert img[...,::-1]的作用是实现BGR到RGB通道的转换，对于列表img进行img[...,::-1]的作用是将列表左右翻转
         img = img[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW
         img = np.ascontiguousarray(img)
 
@@ -400,13 +400,13 @@ class LoadImagesAndLabels(Dataset):
                 # 获取数据集路径path,包含图片路径的txt文件或者包含图片的文件夹路径
                 # 使用pathlib.Path生成与操作系统无关的路径，因为不同操作系统路径的‘\’有所不同
                 p = Path(p)  # os-agnostic
-                if p.is_dir():  # dir
+                if p.is_dir():  # dir  如果路径path为包含图片文件夹的路径
                     f += glob.glob(str(p / '**' / '*.*'), recursive=True)
                     # f = list(p.rglob('**/*.*'))  # pathlib
-                elif p.is_file():  # file
+                elif p.is_file():  # file 如果路径path为包含图片路径的txt文件
                     with open(p, 'r') as t:
-                        t = t.read().strip().splitlines()
-                        parent = str(p.parent) + os.sep
+                        t = t.read().strip().splitlines() # 获取图片路径，更换相对路径
+                        parent = str(p.parent) + os.sep # 获取数据集路径的上级父目录，os.sep为路径里的分隔符（不同系统分隔符不同）
                         f += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
                         # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
                 else:
@@ -449,17 +449,18 @@ class LoadImagesAndLabels(Dataset):
 
         n = len(shapes)  # number of images
         bi = np.floor(np.arange(n) / batch_size).astype(np.int)  # batch index 对所有数据进行batch索引
-        nb = bi[-1] + 1  # number of batches 一个epoch有多少个batch
-        self.batch = bi  # batch index of image
+        nb = bi[-1] + 1  # number of batches 一个epoch有多少个batch  如果batch_size=16那么每16个batch为一组，[0*16...1*16...2*16...]
         self.n = n
         self.indices = range(n)
 
+        # ar排序矩形训练
         # Rectangular Training
-        if self.rect:
+        if self.rect:  # False
             # Sort by aspect ratio
             s = self.shapes  # wh
             ar = s[:, 1] / s[:, 0]  # aspect ratio
-            irect = ar.argsort()
+            irect = ar.argsort() # 获取根据ar大小排序的索引
+            # 根据索引排序数据集与标签路径、shape、h/w
             self.img_files = [self.img_files[i] for i in irect]
             self.label_files = [self.label_files[i] for i in irect]
             self.labels = [self.labels[i] for i in irect]
@@ -467,13 +468,13 @@ class LoadImagesAndLabels(Dataset):
             ar = ar[irect]
 
             # Set training image shapes
-            shapes = [[1, 1]] * nb
+            shapes = [[1, 1]] * nb  # 初始化shapes,nb为1轮批次batch的数量
             for i in range(nb):
                 ari = ar[bi == i]
                 mini, maxi = ari.min(), ari.max()
-                if maxi < 1:
+                if maxi < 1: # 如果一个batch中的最大的h/w小于1，则此batch的shape为（imgsize*maxi,imgsize）
                     shapes[i] = [maxi, 1]
-                elif mini > 1:
+                elif mini > 1: # 如果一个batch中的最小的h/w大于1，则此batch的shape为（imgsize,imgsize/mini）
                     shapes[i] = [1, 1 / mini]
 
             self.batch_shapes = np.ceil(np.array(shapes) * img_size / stride + pad).astype(np.int) * stride
@@ -488,7 +489,7 @@ class LoadImagesAndLabels(Dataset):
             gb = 0  # Gigabytes of cached images
             self.img_hw0, self.img_hw = [None] * n, [None] * n
             results = ThreadPool(NUM_THREADS).imap(lambda x: load_image(*x), zip(repeat(self), range(n)))
-            pbar = tqdm(enumerate(results), total=n)
+            pbar = tqdm(enumerate(results), total=n)  # 进度条包装一下  pbar是一个标签文件的可迭代对象
             for i, x in pbar:
                 if cache_images == 'disk':
                     if not self.img_npy[i].exists():
@@ -537,7 +538,7 @@ class LoadImagesAndLabels(Dataset):
         return x
 
     def __len__(self):
-        return len(self.img_files)
+        return len(self.img_files) # 重写函数 返回图片个数
 
     # def __iter__(self):
     #     self.count = -1
@@ -547,8 +548,8 @@ class LoadImagesAndLabels(Dataset):
 
     def __getitem__(self, index): # batch等于几，getitem就执行几次
         index = self.indices[index]  # linear, shuffled, or image_weights
-
-        hyp = self.hyp
+        # self.indices在train.py中设置，要配合着train.py中的代码使用
+        hyp = self.hyp # 字典
         mosaic = self.mosaic and random.random() < hyp['mosaic']  # mosaic=1.0
         if mosaic:
             # Load mosaic
@@ -560,8 +561,8 @@ class LoadImagesAndLabels(Dataset):
                 img, labels = mixup(img, labels, *load_mosaic(self, random.randint(0, self.n - 1)))
 
         else:
-            # Load image
-            img, (h0, w0), (h, w) = load_image(self, index)
+            # Load image  加载图片并根据设定的输入大小与图片原大小的比例ratio进行resize
+            img, (h0, w0), (h, w) = load_image(self, index) # 高，宽，resize后的 高，宽
 
             # Letterbox
             shape = self.batch_shapes[self.batch[index]] if self.rect else self.img_size  # final letterboxed shape
@@ -569,7 +570,7 @@ class LoadImagesAndLabels(Dataset):
             shapes = (h0, w0), ((h / h0, w / w0), pad)  # for COCO mAP rescaling
 
             labels = self.labels[index].copy()
-            if labels.size:  # normalized xywh to pixel xyxy format
+            if labels.size:  # normalized xywh(归一化) to pixel xyxy format（未归一化）
                 labels[:, 1:] = xywhn2xyxy(labels[:, 1:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
 
             if self.augment:
@@ -618,6 +619,8 @@ class LoadImagesAndLabels(Dataset):
         return torch.from_numpy(img), labels_out, self.img_files[index], shapes
 
     @staticmethod
+    # pytorch的DataLoader打包一个batch的数据集时，要经过函数collate_fn进行打包
+    # 例如：通过重写此函数实现标签与图片对应的划分，一个batch中哪些标签属于哪一张图片
     def collate_fn(batch):
         img, label, path, shapes = zip(*batch)  # transposed
         for i, l in enumerate(label):
@@ -653,6 +656,7 @@ class LoadImagesAndLabels(Dataset):
 
 # Ancillary functions --------------------------------------------------------------------------------------------------
 # load_image加载图片并根据设定的输入大小与图片原大小的比例ratio进行resize
+# 用于detect.py
 def load_image(self, i):
     # loads 1 image from dataset index 'i', returns im, original hw, resized hw
     im = self.imgs[i]
