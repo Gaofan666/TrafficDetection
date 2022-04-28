@@ -98,6 +98,7 @@ def print_args(name, opt):
     # Print argparser arguments
     print(colorstr(f'{name}: ') + ', '.join(f'{k}={v}' for k, v in vars(opt).items()))
 
+
 # 初始化随机化种子
 def init_seeds(seed=0):
     # Initialize random number generator (RNG) seeds https://pytorch.org/docs/stable/notes/randomness.html
@@ -107,6 +108,7 @@ def init_seeds(seed=0):
     np.random.seed(seed)
     torch.manual_seed(seed)
     cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False)
+
 
 # 获取最近训练出来的权重文件last.pt，
 def get_latest_run(search_dir='.'):
@@ -199,6 +201,7 @@ def check_online():
     except OSError:
         return False
 
+
 # 检查当前版本与git是否一致，如果不一致，提醒用户
 @try_except
 def check_git_status():
@@ -267,13 +270,14 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
             f"{prefix} ⚠️ {colorstr('bold', 'Restart runtime or rerun command for updates to take effect')}\n"
         print(emojis(s))
 
+
 # 检查图片是否是s（32）的整数倍;不是则调整图像尺寸
 def check_img_size(imgsz, s=32, floor=0):
     # Verify image size is a multiple of stride s in each dimension
     if isinstance(imgsz, int):  # integer i.e. img_size=640
         new_size = max(make_divisible(imgsz, int(s)), floor)
     else:  # list i.e. img_size=[640, 480] make_divisible函数会把图片向上调整到最最小的32的整数倍
-        new_size = [max(make_divisible(x, int(s)), floor) for x in imgsz] # 32的倍数
+        new_size = [max(make_divisible(x, int(s)), floor) for x in imgsz]  # 32的倍数
     if new_size != imgsz:
         print(f'WARNING: --img-size {imgsz} must be multiple of max stride {s}, updating to {new_size}')
     return new_size
@@ -606,6 +610,7 @@ def clip_coords(boxes, shape):
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, shape[0])  # y1, y2
 
 
+# 非极大值抑制
 def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=None, agnostic=False, multi_label=False,
                         labels=(), max_det=300):
     """Runs Non-Maximum Suppression (NMS) on inference results
@@ -622,7 +627,7 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
 
     # Settings
-    min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
+    min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height 最小的要预测的框的宽高是2 最大4096
     max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
     time_limit = 10.0  # seconds to quit after
     redundant = True  # require redundant detections
@@ -681,6 +686,10 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         # Batched NMS
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
+        # 参数：boxes(Tensor[N,4]) - bounding boxes坐标  格式：（x1,y1,x2,y20
+        # scores(Tensor[N]) - bounding boxes得分
+        # iou_threshold(float) - Iou过滤阈值
+        # 返回值：keep:NMS过滤后的bounding boxes索引（降序排列）
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         if i.shape[0] > max_det:  # limit detections
             i = i[:max_det]

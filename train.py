@@ -321,22 +321,23 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = nn.functional.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
-            # Forward 前向传播
-            with amp.autocast(enabled=cuda):
+            # Forward 前向传播  混合精度训练
+            with amp.autocast(enabled=cuda): # 开启autocast的context managers语义（model+loss）
                 pred = model(imgs)  # forward 传入图片数据
-                # 总损失，分类损失，回归损失，置信度损失
+                # loss为总损失，loss_items是一个元祖，包含分类损失，objectness损失，框的回归损失和总损失
                 loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 if RANK != -1:
+                    # 平均不同GPU之间的梯度
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
 
-            # Backward 反向传播
+            # Backward 反向传播 scale loss为了梯度放大
             scaler.scale(loss).backward()
 
             # Optimize  相当于backward多少次才更新一次参数
-            if ni - last_opt_step >= accumulate:
-                scaler.step(optimizer)  # optimizer.step
+            if ni - last_opt_step >= accumulate: # 模型反向传播accumulate次数之后再根据累积的梯度更新一次参数
+                scaler.step(optimizer)  # optimizer.step 首先把梯度的值unscale回来
                 scaler.update()
                 optimizer.zero_grad()
                 if ema:

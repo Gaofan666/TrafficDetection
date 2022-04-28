@@ -9,12 +9,12 @@ import torch.nn as nn
 from utils.metrics import bbox_iou
 from utils.torch_utils import is_parallel
 
-
+# 标签平滑
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
     return 1.0 - 0.5 * eps, 0.5 * eps
 
-
+# 这个类将loss操作和BCELoss（二进制交叉熵损失）集合到了一个类
 class BCEBlurWithLogitsLoss(nn.Module):
     # BCEwithLogitLoss() with reduced missing label effects.
     def __init__(self, alpha=0.05):
@@ -28,10 +28,10 @@ class BCEBlurWithLogitsLoss(nn.Module):
         dx = pred - true  # reduce only missing label effects
         # dx = (pred - true).abs()  # reduce missing label and false label effects
         alpha_factor = 1 - torch.exp((dx - 1) / (self.alpha + 1e-4))
-        loss *= alpha_factor
+        loss *= alpha_factor  # 为了减少标签缺失情况的影响
         return loss.mean()
 
-
+# 该类主要是为了解决单目标检测中正负样本比例严重失衡的问题，该损失函数降低了大量简单负样本在训练中所占的比例
 class FocalLoss(nn.Module):
     # Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)
     def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
@@ -87,7 +87,7 @@ class QFocalLoss(nn.Module):
         else:  # 'none'
             return loss
 
-
+# 计算损失（分类损失+置信度损失+框坐标回归损失）
 class ComputeLoss:
     # Compute losses
     def __init__(self, model, autobalance=False):
@@ -103,11 +103,13 @@ class ComputeLoss:
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
 
         # Focal loss
+        # 如果设置了fl_gamma超参数，就使用focal_loss，默认没有使用
         g = h['fl_gamma']  # focal loss gamma
         if g > 0:
             BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
 
         det = model.module.model[-1] if is_parallel(model) else model.model[-1]  # Detect() module
+        # 设置三个特征图对应输出的损失系数
         self.balance = {3: [4.0, 1.0, 0.4]}.get(det.nl, [4.0, 1.0, 0.25, 0.06, .02])  # P3-P7
         self.ssi = list(det.stride).index(16) if autobalance else 0  # stride 16 index
         self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
@@ -116,27 +118,34 @@ class ComputeLoss:
 
     def __call__(self, p, targets):  # predictions, targets, model
         device = targets.device
+        # 初始化各个部分损失
         lcls, lbox, lobj = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
         # 获取标签分类，边框，索引，anchors
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
 
-        # Losses
+        # Losses  遍历每个预测输出
         for i, pi in enumerate(p):  # layer index, layer predictions
+            # 根据indices获取索引，方便找到对应网格的输出
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
             n = b.shape[0]  # number of targets
             if n:
+                # 找到对应网格的输出，取出对应位置的预测值
                 ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
-                # Regression
+                # Regression 对输出xywh进行反算
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                # 计算边框损失
                 iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
+                # 根据model.jr设置Objectness的标签值，有目标的conf分支权重
+                # 不同anchor和gt bbox匹配度不一样，预测框和gt,bbox的匹配度也不一样，如果权重设置一样肯定不是最优的
+                # 故将预测框和bbox的iou作为权重乘到conf分支，用于表征预测质量
                 score_iou = iou.detach().clamp(0).type(tobj.dtype)
                 if self.sort_obj_iou:
                     sort_id = torch.argsort(score_iou)
@@ -144,22 +153,24 @@ class ComputeLoss:
                 tobj[b, a, gj, gi] = (1.0 - self.gr) + self.gr * score_iou  # iou ratio
 
                 # Classification
+                # 如果类别数大于1,才计算分类损失
                 if self.nc > 1:  # cls loss (only if multiple classes)
                     t = torch.full_like(ps[:, 5:], self.cn, device=device)  # targets
                     t[range(n), tcls[i]] = self.cp
-                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE
+                    lcls += self.BCEcls(ps[:, 5:], t)  # BCE 每个类单独计算loss
 
                 # Append targets to text file
                 # with open('targets.txt', 'a') as file:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
             obji = self.BCEobj(pi[..., 4], tobj)
-            lobj += obji * self.balance[i]  # obj loss
+            lobj += obji * self.balance[i]  # obj loss 计算objectness的损失
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
 
         if self.autobalance:
             self.balance = [x / self.balance[self.ssi] for x in self.balance]
+        # 根据超参数设置的各个损失部分损失的系数获取最终损失
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']

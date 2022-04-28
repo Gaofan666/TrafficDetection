@@ -55,6 +55,7 @@ def git_describe(path=Path(__file__).parent):  # path must be a directory
         return ''  # not a git repository
 
 
+# 选择设备
 def select_device(device='', batch_size=None):
     # device = 'cpu' or '0' or '0,1,2,3'
     s = f'YOLOv5 🚀 {git_describe() or date_modified()} torch {torch.__version__} '  # string
@@ -63,13 +64,13 @@ def select_device(device='', batch_size=None):
     if cpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # force torch.cuda.is_available() = False
     elif device:  # non-cpu device requested
-        os.environ['CUDA_VISIBLE_DEVICES'] = device  # set environment variable
+        os.environ['CUDA_VISIBLE_DEVICES'] = device  # set environment variable  设定使用的GPU显卡
         assert torch.cuda.is_available(), f'CUDA unavailable, invalid device {device} requested'  # check availability
 
     cuda = not cpu and torch.cuda.is_available()
     if cuda:
         devices = device.split(',') if device else '0'  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
-        n = len(devices)  # device count
+        n = len(devices)  # device count  可用GPU的数量
         if n > 1 and batch_size:  # check batch_size is divisible by device_count
             assert batch_size % n == 0, f'batch-size {batch_size} not multiple of GPU count {n}'
         space = ' ' * (len(s) + 1)
@@ -143,6 +144,7 @@ def profile(input, ops, n=10, device=None):
     return results
 
 
+# 是否并行（多GPU）
 def is_parallel(model):
     # Returns True if model is of type DP or DDP
     return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
@@ -153,11 +155,13 @@ def de_parallel(model):
     return model.module if is_parallel(model) else model
 
 
+# 查找字典交集
 def intersect_dicts(da, db, exclude=()):
     # Dictionary intersection of matching keys and shapes, omitting 'exclude' keys, using da values
     return {k: v for k, v in da.items() if k in db and not any(x in k for x in exclude) and v.shape == db[k].shape}
 
 
+# 初始化权重
 def initialize_weights(model):
     for m in model.modules():
         t = type(m)
@@ -175,26 +179,30 @@ def find_modules(model, mclass=nn.Conv2d):
     return [i for i, m in enumerate(model.module_list) if isinstance(m, mclass)]
 
 
+# 计算模型的稀疏度
 def sparsity(model):
     # Return global model sparsity
     a, b = 0., 0.
     for p in model.parameters():
-        a += p.numel()
-        b += (p == 0).sum()
+        a += p.numel()  # 权重总数
+        b += (p == 0).sum()  # 为0的权重总数
     return b / a
 
 
+# 权重剪枝 # 0.3 就是剪去30%
 def prune(model, amount=0.3):
     # Prune model to requested global sparsity
     import torch.nn.utils.prune as prune
     print('Pruning model... ', end='')
     for name, m in model.named_modules():
-        if isinstance(m, nn.Conv2d):
+        if isinstance(m, nn.Conv2d):  # 对卷积层进行剪枝
+            # 将所有卷积层的权重剪去30%（默认） 剪去Lowest L1-norm的权重
             prune.l1_unstructured(m, name='weight', amount=amount)  # prune
             prune.remove(m, 'weight')  # make permanent
     print(' %.3g global sparsity' % sparsity(model))
 
 
+# 融合conv和bn层
 def fuse_conv_and_bn(conv, bn):
     # Fuse convolution and batchnorm layers https://tehnokv.com/posts/fusing-batchnorm-and-conv/
     fusedconv = nn.Conv2d(conv.in_channels,
@@ -218,6 +226,7 @@ def fuse_conv_and_bn(conv, bn):
     return fusedconv
 
 
+# 打印模型信息
 def model_info(model, verbose=False, img_size=640):
     # Model information. img_size may be int or list, i.e. img_size=640 or img_size=[640, 320]
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
@@ -230,7 +239,7 @@ def model_info(model, verbose=False, img_size=640):
                   (i, name, p.requires_grad, p.numel(), list(p.shape), p.mean(), p.std()))
 
     try:  # FLOPs
-        from thop import profile
+        from thop import profile  # thop:估计Pytorch模型的FLOPS模块
         stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32
         img = torch.zeros((1, model.yaml.get('ch', 3), stride, stride), device=next(model.parameters()).device)  # input
         flops = profile(deepcopy(model), inputs=(img,), verbose=False)[0] / 1E9 * 2  # stride GFLOPs
@@ -242,6 +251,7 @@ def model_info(model, verbose=False, img_size=640):
     LOGGER.info(f"Model Summary: {len(list(model.modules()))} layers, {n_p} parameters, {n_g} gradients{fs}")
 
 
+# 加载第二级分类器
 def load_classifier(name='resnet101', n=2):
     # Loads a pretrained model reshaped to n-class output
     model = torchvision.models.__dict__[name](pretrained=True)
@@ -261,6 +271,7 @@ def load_classifier(name='resnet101', n=2):
     return model
 
 
+# 根据ratio改变图像尺寸
 def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
     # scales img(bs,3,y,x) by ratio constrained to gs-multiple
     if ratio == 1.0:
@@ -274,6 +285,7 @@ def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
         return F.pad(img, [0, w - s[1], 0, h - s[0]], value=0.447)  # value = imagenet mean
 
 
+# 拷贝属性值
 def copy_attr(a, b, include=(), exclude=()):
     # Copy attributes from b to a, options to only include [...] and to exclude [...]
     for k, v in b.__dict__.items():
@@ -303,6 +315,7 @@ class EarlyStopping:
         return stop
 
 
+# 模型EMA
 class ModelEMA:
     """ Model Exponential Moving Average from https://github.com/rwightman/pytorch-image-models
     Keep a moving average of everything in the model state_dict (parameters and buffers).
@@ -319,6 +332,7 @@ class ModelEMA:
         # if next(model.parameters()).device.type != 'cpu':
         #     self.ema.half()  # FP16 EMA
         self.updates = updates  # number of EMA updates
+        # 衰减率将decay用于控制模型的更新速度
         self.decay = lambda x: decay * (1 - math.exp(-x / 2000))  # decay exponential ramp (to help early epochs)
         for p in self.ema.parameters():
             p.requires_grad_(False)
@@ -333,7 +347,8 @@ class ModelEMA:
             for k, v in self.ema.state_dict().items():
                 if v.dtype.is_floating_point:
                     v *= d
-                    v += (1. - d) * msd[k].detach()
+                    v += (1. - d) * msd[k].detach()  # detach()截断反向传播的梯度流
+                    # 将某个node变成不需要梯度的variable,因此当反向传播经过这个node时，梯度就不会从这个node往前面传播
 
     def update_attr(self, model, include=(), exclude=('process_group', 'reducer')):
         # Update EMA attributes
